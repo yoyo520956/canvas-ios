@@ -1,0 +1,82 @@
+name: build
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: maxim-lobanov/setup-xcode@v1
+        continue-on-error: true
+        with:
+          xcode-version: '16.4'
+
+      - name: Install xcodegen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Build
+        run: |
+          xcodebuild archive \
+            -project InfiniteCanvas.xcodeproj \
+            -scheme InfiniteCanvas \
+            -configuration Release \
+            -archivePath build/InfiniteCanvas.xcarchive \
+            CODE_SIGNING_ALLOWED=NO \
+            2>&1 | tee build.log
+          grep -nE "error:" build.log | head -20 || echo "No errors found"
+
+      - name: Export IPA
+        run: |
+          mkdir -p build/ipa
+          APP_PATH="$(find build/InfiniteCanvas.xcarchive/Products/Applications -name '*.app' | head -1)"
+          if [ -f "$APP_PATH" ]; then
+            cp -R "$APP_PATH" build/ipa/Payload/
+            cd build/ipa
+            zip -qry "../InfiniteCanvas-unsigned.ipa" Payload/
+            echo "IPA created: $(ls -la InfiniteCanvas-unsigned.ipa)"
+          else
+            echo "ERROR: .app not found in xcarchive"
+            find build/InfiniteCanvas.xcarchive -name '*.app' || true
+            exit 1
+          fi
+
+      - name: Verify IPA
+        run: |
+          python3 -c "
+          import zipfile, sys
+          z = zipfile.ZipFile('build/ipa/InfiniteCanvas-unsigned.ipa')
+          infos = [n for n in z.namelist() if 'Info.plist' in n]
+          print('Info.plist:', infos)
+          apps = [n for n in z.namelist() if n.endswith('.app/')]
+          print('App dirs:', apps[:3])
+          print('Total files:', len(z.namelist()))
+          "
+          md5 build/ipa/InfiniteCanvas-unsigned.ipa
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: InfiniteCanvas-unsigned
+          path: build/ipa/InfiniteCanvas-unsigned.ipa
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v0.1.0
+          files: build/ipa/InfiniteCanvas-unsigned.ipa
+          name: InfiniteCanvas v0.1.0
+          body: |
+            ## 无限画布 v0.1.0
+            - 无限画布（拖拽/缩放）
+            - AI 图片生成节点（Agnes 2.0 API）
+            - 文字笔记节点
+            - 节点拖拽/调整大小
+            - 设置 API Key
