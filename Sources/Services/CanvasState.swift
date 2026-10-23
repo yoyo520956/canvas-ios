@@ -15,6 +15,8 @@ final class CanvasState: ObservableObject {
     private let configKey = "infinite_canvas_config"
 
     init() {
+        // 必须先给 config 赋值，否则 loadConfig() 会访问未初始化属性
+        config = AgnesConfig.default
         loadConfig()
         let welcome = CanvasNode(
             kind: .text,
