@@ -55,20 +55,30 @@ jobs:
       - name: Verify IPA
         run: |
           python3 - <<'PYEOF'
-          import zipfile
+          import plistlib, zipfile
           p = 'build/ipa/InfiniteCanvas-unsigned.ipa'
           z = zipfile.ZipFile(p)
           names = z.namelist()
-          apps = [n for n in names if n.startswith('Payload/') and n.endswith('.app/')]
-          execs = [n for n in apps if n.count('/') == 1]
-          print('IPA:', p)
-          print('App dirs:', apps[:3])
-          print('Executable entries:', execs[:3])
-          print('Info.plist count:', len([n for n in names if n.endswith('Info.plist')]))
-          print('Total files:', len(names))
-          assert execs, 'Payload 里没有 .app，打包失败'
-          assert any(n.endswith('Info.plist') for n in names), '缺少 Info.plist'
-          print('VERIFY OK')
+          plists = [n for n in names if n.startswith('Payload/') and n.count('/') == 2 and n.endswith('.app/Info.plist')]
+          print('IPA:', p, '| entries:', len(names))
+          print('app Info.plist:', plists)
+          assert plists, 'Payload/<App>.app/Info.plist 缺失'
+          top = plists[0]
+          app_dir = top.rsplit('/', 1)[0]                 # Payload/InfiniteCanvas.app
+          info = plistlib.loads(z.read(top))
+          exe = info.get('CFBundleExecutable', '')
+          print('CFBundleExecutable:', exe)
+          print('CFBundleIdentifier:', info.get('CFBundleIdentifier'))
+          print('CFBundleShortVersionString:', info.get('CFBundleShortVersionString'))
+          print('CFBundleVersion:', info.get('CFBundleVersion'))
+          print('CFBundleDisplayName:', info.get('CFBundleDisplayName'))
+          assert exe, 'Info.plist 没有 CFBundleExecutable'
+          assert (app_dir + '/' + exe) in names, '缺少主二进制 ' + exe
+          assets = [n for n in names if n.endswith('Assets.car')]
+          icon = [n for n in names if 'AppIcon' in n or n.endswith('icon-1024.png')]
+          print('Assets.car:', assets)
+          print('icon hits:', icon[:3])
+          print('VERIFY OK ->', app_dir)
           PYEOF
 
       - name: Upload artifact
