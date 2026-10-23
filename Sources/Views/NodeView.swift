@@ -32,6 +32,7 @@ final class NodeView: UIView {
 
     private var loadedImageURL: String?
     private var isEditingPrompt = false
+    private var gestureDelegate: NodeGestureDelegate?
 
     // MARK: - 初始化
     init(node: CanvasNode, state: CanvasState, scrollView: CanvasScrollView?) {
@@ -112,12 +113,14 @@ final class NodeView: UIView {
         selectionBorder.isHidden = true
         addSubview(selectionBorder)
 
+        gestureDelegate = NodeGestureDelegate(owner: self)
+
         let pan = UIPanGestureRecognizer(target: self, action: #selector(handleDrag(_:)))
-        pan.delegate = self
+        pan.delegate = gestureDelegate
         addGestureRecognizer(pan)
 
         let tap = UITapGestureRecognizer(target: self, action: #selector(handleTap))
-        tap.delegate = self
+        tap.delegate = gestureDelegate
         tap.cancelsTouchesInView = false
         addGestureRecognizer(tap)
     }
@@ -313,19 +316,34 @@ final class NodeView: UIView {
         state.deleteNode(node.id)
     }
 
-    // MARK: - UIGestureRecognizerDelegate
-    func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+    // MARK: - 手势判定（供 NodeGestureDelegate 调用）
+    func shouldBeginDrag(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
         if gestureRecognizer is UIPanGestureRecognizer {
-            // 正在编辑提示词 / 点在按钮上 → 不拖拽
+            // 正在编辑提示词 → 不拖拽
             if isEditingPrompt { return false }
-            if let touched = gestureRecognizer.view?.hitTest(
-                gestureRecognizer.location(in: gestureRecognizer.view),
-                with: nil
-            ), touched is UIControl || touched === promptTextView {
-                return false
+            // 点在按钮/输入框上 → 不拖拽
+            if let view = gestureRecognizer.view {
+                let point = gestureRecognizer.location(in: view)
+                if let touched = view.hitTest(point, with: nil),
+                   touched is UIControl || touched === promptTextView {
+                    return false
+                }
             }
         }
         return true
+    }
+}
+
+/// 手势代理：独立成对象，避免与 UIView 自带的 gestureRecognizerShouldBegin 冲突
+private final class NodeGestureDelegate: NSObject, UIGestureRecognizerDelegate {
+    weak var owner: NodeView?
+
+    init(owner: NodeView) {
+        self.owner = owner
+    }
+
+    func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+        return owner?.shouldBeginDrag(gestureRecognizer) ?? true
     }
 
     func gestureRecognizer(
