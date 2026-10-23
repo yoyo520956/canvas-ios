@@ -41,11 +41,11 @@ jobs:
           if [ -d "$APP_PATH" ]; then
             echo "Found app: $APP_PATH"
             cp -R "$APP_PATH" build/ipa/Payload/
-            cd build/ipa
-            zip -qry "../InfiniteCanvas-unsigned.ipa" Payload/
-            cd ..
-            echo "IPA created:"; ls -la InfiniteCanvas-unsigned.ipa
-            md5 InfiniteCanvas-unsigned.ipa | tee ipa-md5.txt
+            ( cd build/ipa && zip -qry InfiniteCanvas-unsigned.ipa Payload/ )
+            echo "IPA created:"
+            ls -la build/ipa/InfiniteCanvas-unsigned.ipa
+            md5sum build/ipa/InfiniteCanvas-unsigned.ipa | tee build/ipa-md5.txt \
+              || md5 build/ipa/InfiniteCanvas-unsigned.ipa | tee build/ipa-md5.txt
           else
             echo "ERROR: .app not found in xcarchive"
             find build/InfiniteCanvas.xcarchive -name '*.app' || true
@@ -54,15 +54,22 @@ jobs:
 
       - name: Verify IPA
         run: |
-          python3 -c "
-          import zipfile, sys
-          z = zipfile.ZipFile('build/ipa/InfiniteCanvas-unsigned.ipa')
-          infos = [n for n in z.namelist() if 'Info.plist' in n]
-          print('Info.plist:', infos)
-          apps = [n for n in z.namelist() if n.endswith('.app/')]
+          python3 - <<'PYEOF'
+          import zipfile
+          p = 'build/ipa/InfiniteCanvas-unsigned.ipa'
+          z = zipfile.ZipFile(p)
+          names = z.namelist()
+          apps = [n for n in names if n.startswith('Payload/') and n.endswith('.app/')]
+          execs = [n for n in apps if n.count('/') == 1]
+          print('IPA:', p)
           print('App dirs:', apps[:3])
-          print('Total files:', len(z.namelist()))
-          "
+          print('Executable entries:', execs[:3])
+          print('Info.plist count:', len([n for n in names if n.endswith('Info.plist')]))
+          print('Total files:', len(names))
+          assert execs, 'Payload 里没有 .app，打包失败'
+          assert any(n.endswith('Info.plist') for n in names), '缺少 Info.plist'
+          print('VERIFY OK')
+          PYEOF
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
