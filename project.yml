@@ -14,8 +14,8 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.qingyao.infinitecanvas
         PRODUCT_NAME: InfiniteCanvas
-        MARKETING_VERSION: 0.3.0
-        CURRENT_PROJECT_VERSION: 20261024.02
+        MARKETING_VERSION: 0.4.0
+        CURRENT_PROJECT_VERSION: 20261024.03
         SWIFT_VERSION: 5.9
         CODE_SIGNING_REQUIRED: NO
         CODE_SIGN_IDENTITY: ""

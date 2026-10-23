@@ -29,7 +29,7 @@ final class ImageGenService {
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.timeoutInterval = 120
-        request.setValue("Bearer \(config.apiKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("Bearer \(config.effectiveAPIKey)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
         let size = AgnesConfig.sizes.contains(config.size) ? config.size : "1024x1024"
@@ -49,7 +49,17 @@ final class ImageGenService {
             throw APIError(message: "服务器无响应")
         }
         guard (200..<300).contains(http.statusCode) else {
-            throw APIError(message: Self.extractErrorMessage(data) ?? "HTTP \(http.statusCode)")
+            let detail = Self.extractErrorMessage(data)
+            switch http.statusCode {
+            case 401, 403:
+                throw APIError(message: "API Key 无效或被拒绝（\(http.statusCode)），请到「设置」里重新填写 Key")
+            case 404:
+                throw APIError(message: "接口不存在（404），请检查 API 地址是否为 \(config.baseURL)")
+            case 429:
+                throw APIError(message: "请求太频繁（429），稍等几秒再试")
+            default:
+                throw APIError(message: detail ?? "HTTP \(http.statusCode)")
+            }
         }
 
         guard let result = try? JSONDecoder().decode(ImageGenResponse.self, from: data) else {

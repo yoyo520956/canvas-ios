@@ -19,7 +19,7 @@ struct AgnesConfig: Codable {
 
     static let `default` = AgnesConfig(
         baseURL: "https://api.agnes-ai.cn/v1",
-        apiKey: "c2stWGFHalhKUzc3FnpRVmYwYWNkYnNmVXdmMU9SNHd0VXhUU050Q0ZnNGNWMUhlUzgy",
+        apiKey: "sk-XaGjXJS77FniRVmacdbsfUwf1OR4wtUxTSNtCFg4cV1HeS82",
         model: "agnes-image-2.5-flash",
         size: "1024x1024"
     )
@@ -35,6 +35,18 @@ struct AgnesConfig: Codable {
 
     private enum CodingKeys: String, CodingKey {
         case baseURL, apiKey, model, size
+    }
+
+    /// 历史上曾把 key 多包了一层 base64（sk- 变成 c2st），这里统一还原成真实值
+    var effectiveAPIKey: String {
+        let trimmed = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.hasPrefix("c2st") else { return trimmed }
+        if let data = Data(base64Encoded: trimmed),
+           let decoded = String(data: data, encoding: .utf8),
+           decoded.hasPrefix("sk-") {
+            return decoded
+        }
+        return trimmed
     }
 }
 

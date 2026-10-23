@@ -108,6 +108,13 @@ final class CanvasState: ObservableObject {
         selectedNodeId = id
     }
 
+    /// 点谁谁置顶：把节点移到数组末尾，CanvasView 会同步子视图层级
+    func bringToFront(_ id: String) {
+        guard let idx = nodes.firstIndex(where: { $0.id == id }), idx != nodes.count - 1 else { return }
+        let moved = nodes.remove(at: idx)
+        nodes.append(moved)
+    }
+
     func deleteNode(_ id: String) {
         pushUndo()
         nodes.removeAll { $0.id == id }
@@ -238,6 +245,15 @@ final class CanvasState: ObservableObject {
         if let data = UserDefaults.standard.data(forKey: configKey),
            let decoded = try? JSONDecoder().decode(AgnesConfig.self, from: data) {
             config = decoded
+            // 旧版本存过被 base64 污染的 key，直接换回内置真 key
+            if config.apiKey.hasPrefix("c2st") {
+                config.apiKey = AgnesConfig.default.apiKey
+            }
         }
+    }
+
+    /// 设置页/顶栏用来提示 key 是否可用
+    var hasUsableKey: Bool {
+        config.apiKey.trimmingCharacters(in: .whitespaces).count > 10
     }
 }

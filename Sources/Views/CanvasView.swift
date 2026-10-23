@@ -12,13 +12,13 @@ final class DotGridView: UIView {
 
     override func draw(_ rect: CGRect) {
         guard let ctx = UIGraphicsGetCurrentContext() else { return }
-        ctx.setFillColor(UIColor(white: 0.26, alpha: 1).cgColor)
+        ctx.setFillColor(CanvasTheme.gridDot.cgColor)
         let step: CGFloat = 32
         var y = rect.minY
         while y < rect.maxY {
             var x = rect.minX
             while x < rect.maxX {
-                ctx.fillEllipse(in: CGRect(x: x - 1, y: y - 1, width: 2, height: 2))
+                ctx.fillEllipse(in: CGRect(x: x - 1.5, y: y - 1.5, width: 3, height: 3))
                 x += step
             }
             y += step
@@ -38,7 +38,8 @@ final class CanvasScrollView: UIScrollView {
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
     private func setup() {
-        backgroundColor = UIColor(white: 0.055, alpha: 1)
+        backgroundColor = CanvasTheme.canvasBG
+        indicatorsTintColor = UIColor(white: 0.32, alpha: 1)
         minimumZoomScale = 0.15
         maximumZoomScale = 4.0
         bouncesZoom = true
@@ -118,6 +119,7 @@ struct CanvasView: UIViewRepresentable {
         var state: CanvasState
         weak var scrollView: CanvasScrollView?
         var nodeViews: [String: NodeView] = [:]
+        var lastOrder: [String] = []
 
         init(state: CanvasState) { self.state = state }
 
@@ -149,7 +151,16 @@ struct CanvasView: UIViewRepresentable {
                 }
             }
 
-            // 3. 更新内容尺寸（仅在变化时写入，避免 @Published 触发渲染回环）
+            // 3. z-order 跟随数组顺序（点谁谁置顶），仅在顺序变化时重排
+            let order = state.nodes.map(\.id)
+            if order != lastOrder {
+                lastOrder = order
+                for id in order {
+                    if let view = nodeViews[id] { container.bringSubviewToFront(view) }
+                }
+            }
+
+            // 4. 更新内容尺寸（仅在变化时写入，避免 @Published 触发渲染回环）
             var maxX = scrollView.canvasSize.width
             var maxY = scrollView.canvasSize.height
             for node in state.nodes {

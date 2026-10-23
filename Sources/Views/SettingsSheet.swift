@@ -50,6 +50,12 @@ struct SettingsSheet: View {
                     }
                 }
 
+                Section("当前状态") {
+                    LabeledContent("API Key", value: state.hasUsableKey ? "已配置 ✅" : "未配置 ⚠️")
+                    LabeledContent("模型", value: state.config.model)
+                    LabeledContent("出图尺寸", value: state.config.size)
+                }
+
                 Section("模型") {
                     Picker("生图模型", selection: $model) {
                         ForEach(models, id: \.self) { Text($0).tag($0) }
