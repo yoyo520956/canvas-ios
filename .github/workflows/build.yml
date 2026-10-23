@@ -35,13 +35,17 @@ jobs:
 
       - name: Export IPA
         run: |
-          mkdir -p build/ipa
-          APP_PATH="$(find build/InfiniteCanvas.xcarchive/Products/Applications -name '*.app' | head -1)"
-          if [ -f "$APP_PATH" ]; then
+          set -euo pipefail
+          mkdir -p build/ipa/Payload
+          APP_PATH="$(find build/InfiniteCanvas.xcarchive/Products/Applications -name '*.app' -maxdepth 1 | head -1)"
+          if [ -d "$APP_PATH" ]; then
+            echo "Found app: $APP_PATH"
             cp -R "$APP_PATH" build/ipa/Payload/
             cd build/ipa
             zip -qry "../InfiniteCanvas-unsigned.ipa" Payload/
-            echo "IPA created: $(ls -la InfiniteCanvas-unsigned.ipa)"
+            cd ..
+            echo "IPA created:"; ls -la InfiniteCanvas-unsigned.ipa
+            md5 InfiniteCanvas-unsigned.ipa | tee ipa-md5.txt
           else
             echo "ERROR: .app not found in xcarchive"
             find build/InfiniteCanvas.xcarchive -name '*.app' || true
@@ -59,7 +63,6 @@ jobs:
           print('App dirs:', apps[:3])
           print('Total files:', len(z.namelist()))
           "
-          md5 build/ipa/InfiniteCanvas-unsigned.ipa
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -71,6 +74,8 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v0.1.0
+          overwrite_files: true
+          prerelease: true
           files: build/ipa/InfiniteCanvas-unsigned.ipa
           name: InfiniteCanvas v0.1.0
           body: |

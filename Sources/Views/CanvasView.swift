@@ -57,6 +57,33 @@ final class CanvasScrollView: UIScrollView {
         contentView.backgroundColor = .clear
         addSubview(contentView)
         contentSize = canvasSize
+
+        let bgTap = UITapGestureRecognizer(target: self, action: #selector(backgroundTapped(_:)))
+        bgTap.cancelsTouchesInView = false
+        addGestureRecognizer(bgTap)
+    }
+
+    /// 点空白处取消选中（点在节点上时不触发）
+    @objc private func backgroundTapped(_ gesture: UITapGestureRecognizer) {
+        let point = gesture.location(in: contentView)
+        if contentView.hitTest(point, with: nil) === contentView {
+            onTapBackground?()
+        }
+    }
+
+    var onTapBackground: (() -> Void)?
+
+    /// 首屏把视口对准指定内容坐标
+    private var didCenter = false
+    var centerTarget: CGPoint?
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        guard !didCenter, let target = centerTarget, bounds.width > 0, bounds.height > 0 else { return }
+        didCenter = true
+        let x = target.x * zoomScale - bounds.width / 2
+        let y = target.y * zoomScale - bounds.height / 2
+        contentOffset = CGPoint(x: max(0, x), y: max(0, y))
     }
 }
 
@@ -69,6 +96,14 @@ struct CanvasView: UIViewRepresentable {
         context.coordinator.scrollView = scroll
         context.coordinator.state = state
         context.coordinator.sync(scrollView: scroll)
+        scroll.onTapBackground = { [weak state] in
+            state?.selectNode(nil)
+        }
+        // 首屏对准第一个节点，避免落在空白角落
+        if let first = state.nodes.first {
+            scroll.centerTarget = CGPoint(x: first.position.x + first.size.width / 2,
+                                         y: first.position.y + first.size.height / 2)
+        }
         return scroll
     }
 
