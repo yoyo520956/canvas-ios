@@ -15,22 +15,14 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.qingyao.infinitecanvas
         PRODUCT_NAME: InfiniteCanvas
         MARKETING_VERSION: 0.1.0
-        CURRENT_PROJECT_VERSION: 20261023.04
+        CURRENT_PROJECT_VERSION: 20261023.05
         SWIFT_VERSION: 5.9
         CODE_SIGNING_REQUIRED: NO
         CODE_SIGN_IDENTITY: ""
+        # 注意：这里绝不能同时写 target.info（XcodeGen 会按 info.properties 重新生成
+        # 并覆盖 Resources/Info.plist，把手写的 CFBundleDisplayName / 版本变量冲掉）
         INFOPLIST_FILE: Resources/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         TARGETED_DEVICE_FAMILY: "1,2"
         SUPPORTS_MACCATALYST: NO
-        GENERATE_INFOPLIST_FILE: NO
-    info:
-      path: Resources/Info.plist
-      properties:
-        LSRequiresIPhoneOS: true
-        UILaunchScreen: {}
-        UISupportedInterfaceOrientations:
-          - UIInterfaceOrientationPortrait
-        UIDeviceFamily:
-          - 1
-          - 2
