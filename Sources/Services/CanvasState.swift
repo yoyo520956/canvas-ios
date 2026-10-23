@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import UIKit
 
 @MainActor
 final class CanvasState: ObservableObject {
@@ -15,6 +16,8 @@ final class CanvasState: ObservableObject {
     private let configKey = "infinite_canvas_config"
 
     private var saveTask: Task<Void, Never>?
+    /// 撤销栈：只存结构性变更前后的整表快照，封顶 25 步
+    private var undoStack: [[CanvasNode]] = []
 
     init() {
         // 必须先给 config 赋值，否则 loadConfig() 会访问未初始化属性
@@ -36,6 +39,22 @@ final class CanvasState: ObservableObject {
 
     // MARK: - 节点操作
 
+    // MARK: - 撤销
+
+    private func pushUndo() {
+        undoStack.append(nodes)
+        if undoStack.count > 25 { undoStack.removeFirst(undoStack.count - 25) }
+    }
+
+    func undo() {
+        guard let last = undoStack.popLast() else { return }
+        nodes = last
+        selectedNodeId = nil
+        scheduleSave()
+    }
+
+    var canUndo: Bool { !undoStack.isEmpty }
+
     func addNode(kind: NodeKind, prompt: String = "") {
         let size: CGSize = kind == .image
             ? CGSize(width: 300, height: 400)
@@ -46,9 +65,43 @@ final class CanvasState: ObservableObject {
             position: centerPoint,
             size: size
         )
+        pushUndo()
         nodes.append(node)
         selectedNodeId = node.id
         scheduleSave()
+    }
+
+    /// 从相册/分享导入一张图片，直接成为已完成节点
+    func addImageNode(data: Data) {
+        guard let image = UIImage(data: data) else { return }
+        // 大图降采样：iOS 内存 = 宽×高×4 字节，4000px 照片 ≈ 60MB
+        let maxSide: CGFloat = 1400
+        let scale = min(1.0, maxSide / max(image.size.width, image.size.height))
+        let target = CGSize(width: image.size.width * scale, height: image.size.height * scale)
+        let resized = UIGraphicsImageRenderer(size: target).image { _ in
+            image.draw(in: CGRect(origin: .zero, size: target))
+        }
+        guard let jpeg = resized.jpegData(compressionQuality: 0.85) else { return }
+        let node = CanvasNode(kind: .image, prompt: "",
+                              position: centerPoint,
+                              size: CGSize(width: max(240, target.width * 0.6),
+                                           height: max(240, target.height * 0.6)))
+        pushUndo()
+        nodes.append(node)
+        if let name = CanvasStore.writeImage(jpeg, for: node.id) {
+            nodes[nodes.count - 1].imageName = name
+        }
+        nodes[nodes.count - 1].status = .done
+        selectedNodeId = node.id
+        scheduleSave()
+    }
+
+    /// 取节点图片数据（供保存到相册）
+    func imageDataURL(for nodeId: String) -> URL? {
+        guard let node = nodes.first(where: { $0.id == nodeId }),
+              let name = node.imageName else { return nil }
+        let url = CanvasStore.imageURL(name)
+        return FileManager.default.fileExists(atPath: url.path) ? url : nil
     }
 
     func selectNode(_ id: String?) {
@@ -56,6 +109,7 @@ final class CanvasState: ObservableObject {
     }
 
     func deleteNode(_ id: String) {
+        pushUndo()
         nodes.removeAll { $0.id == id }
         if selectedNodeId == id { selectedNodeId = nil }
         CanvasStore.deleteImages(for: [id])
@@ -90,6 +144,7 @@ final class CanvasState: ObservableObject {
     }
 
     func clearAll() {
+        undoStack.removeAll()
         nodes.removeAll()
         selectedNodeId = nil
         CanvasStore.clearAll()

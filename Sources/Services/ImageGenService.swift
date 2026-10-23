@@ -32,7 +32,8 @@ final class ImageGenService {
         request.setValue("Bearer \(config.apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
-        let body = ImageGenRequest(model: config.model, prompt: prompt, n: 1, size: "1024x1024")
+        let size = AgnesConfig.sizes.contains(config.size) ? config.size : "1024x1024"
+        let body = ImageGenRequest(model: config.model, prompt: prompt, n: 1, size: size)
         request.httpBody = try JSONEncoder().encode(body)
 
         let (data, response): (Data, URLResponse)

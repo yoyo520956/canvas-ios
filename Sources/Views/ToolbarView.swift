@@ -1,4 +1,6 @@
 import SwiftUI
+import PhotosUI
+import UIKit
 
 struct ToolbarView: View {
     @ObservedObject var state: CanvasState
@@ -6,16 +8,40 @@ struct ToolbarView: View {
     var onAddText: () -> Void
     var onSettings: () -> Void
 
+    @State private var picked: [PhotosPickerItem] = []
+    @State private var pickError: String?
+    @State private var savedTip = false
+
     var body: some View {
-        HStack(spacing: 10) {
-            toolbarButton(icon: "photo.on.rectangle.angled", title: "图片", color: .cyan, action: onAddImage)
+        HStack(spacing: 9) {
+            toolbarButton(icon: "photo.on.rectangle.angled", title: "AI 生图", color: .cyan, action: onAddImage)
             toolbarButton(icon: "text.quote", title: "文字", color: .mint, action: onAddText)
 
-            if state.selectedNodeId != nil {
-                toolbarButton(icon: "trash", title: "删除", color: .red) {
-                    if let id = state.selectedNodeId {
-                        state.deleteNode(id)
-                    }
+            // 相册导入：PhotosPicker 不需要额外权限声明
+            PhotosPicker(selection: $picked, maxSelectionCount: 6, matching: .images) {
+                VStack(spacing: 3) {
+                    Image(systemName: "photo.stack")
+                        .font(.system(size: 17, weight: .medium))
+                        .foregroundColor(.orange)
+                    Text("相册")
+                        .font(.system(size: 10))
+                        .foregroundColor(.secondary)
+                }
+                .frame(width: 58, height: 52)
+                .background(Color(uiColor: UIColor(white: 0.14, alpha: 1)))
+                .cornerRadius(12)
+            }
+            .buttonStyle(.plain)
+
+            if state.canUndo {
+                toolbarButton(icon: "arrow.uturn.backward", title: "撤销", color: .yellow) {
+                    state.undo()
+                }
+            }
+
+            if let id = state.selectedNodeId, state.imageDataURL(for: id) != nil {
+                toolbarButton(icon: "square.and.arrow.down", title: "存相册", color: .green) {
+                    saveToPhotos(nodeId: id)
                 }
             }
 
@@ -23,9 +49,55 @@ struct ToolbarView: View {
 
             toolbarButton(icon: "gearshape", title: "设置", color: .gray, action: onSettings)
         }
-        .padding(.horizontal, 18)
+        .padding(.horizontal, 16)
         .padding(.vertical, 10)
         .background(Color(uiColor: UIColor(white: 0.085, alpha: 1)).opacity(0.97))
+        .onChange(of: picked) { items in
+            guard !items.isEmpty else { return }
+            importItems(items)
+        }
+        .overlay(alignment: .bottom) {
+            if savedTip {
+                Text("已保存到相册 ✅")
+                    .font(.caption)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(.ultraThinMaterial)
+                    .cornerRadius(8)
+                    .offset(y: -60)
+                    .transition(.opacity)
+            }
+        }
+    }
+
+    // MARK: - 相册导入
+
+    private func importItems(_ items: [PhotosPickerItem]) {
+        Task {
+            var ok = 0
+            for item in items {
+                guard let data = try? await item.loadTransferable(type: Data.self) else { continue }
+                await MainActor.run { state.addImageNode(data: data) }
+                ok += 1
+            }
+            await MainActor.run {
+                picked = []
+                pickError = ok == 0 ? "没有可读的图片" : nil
+            }
+        }
+    }
+
+    // MARK: - 保存到相册
+
+    private func saveToPhotos(nodeId: String) {
+        guard let url = state.imageDataURL(for: nodeId),
+              let image = UIImage(contentsOfFile: url.path) else { return }
+        // 第 3 个参数是 Selector?（完成回调），不需要回调就传 nil
+        UIImageWriteToSavedPhotosAlbum(image, nil, nil, nil)
+        withAnimation { savedTip = true }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) {
+            withAnimation { savedTip = false }
+        }
     }
 
     private func toolbarButton(icon: String, title: String, color: Color, action: @escaping () -> Void) -> some View {
@@ -43,143 +115,5 @@ struct ToolbarView: View {
             .cornerRadius(12)
         }
         .buttonStyle(.plain)
-    }
-}
-
-struct PromptInputSheet: View {
-    @Environment(\.dismiss) private var dismiss
-    @State private var prompt = ""
-    @State private var kind: NodeKind
-    let onSubmit: (NodeKind, String) -> Void
-
-    init(kind: NodeKind, onSubmit: @escaping (NodeKind, String) -> Void) {
-        _kind = State(initialValue: kind)
-        self.onSubmit = onSubmit
-    }
-
-    var body: some View {
-        NavigationStack {
-            Form {
-                Section("节点类型") {
-                    Picker("类型", selection: $kind) {
-                        ForEach(NodeKind.allCases, id: \.self) { k in
-                            Text(k.label).tag(k)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                }
-
-                if kind == .image {
-                    Section("提示词") {
-                        TextEditor(text: $prompt)
-                            .frame(minHeight: 150)
-                            .overlay(alignment: .topLeading) {
-                                if prompt.isEmpty {
-                                    Text("描述你想要的画面，例如：赛博朋克城市夜景，霓虹灯，暴雨…")
-                                        .font(.footnote)
-                                        .foregroundColor(.secondary)
-                                        .padding(.top, 8)
-                                        .padding(.leading, 5)
-                                        .allowsHitTesting(false)
-                                }
-                            }
-                        Text("越具体越好；生成后可在节点内重新编辑并再生成。")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-                } else {
-                    Section("文字内容") {
-                        TextEditor(text: $prompt)
-                            .frame(minHeight: 110)
-                    }
-                }
-            }
-            .navigationTitle(kind == .image ? "添加图片节点" : "添加文字节点")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("取消") { dismiss() }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("添加") {
-                        onSubmit(kind, prompt)
-                        dismiss()
-                    }
-                    .disabled(prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                }
-            }
-        }
-        .presentationDetents([.medium, .large])
-    }
-}
-
-struct SettingsSheet: View {
-    @Environment(\.dismiss) private var dismiss
-    @ObservedObject var state: CanvasState
-    @State private var baseURL = ""
-    @State private var apiKey = ""
-    @State private var model = ""
-    @State private var showKey = false
-
-    var body: some View {
-        NavigationStack {
-            Form {
-                Section("API 配置") {
-                    TextField("Base URL", text: $baseURL)
-                        .autocapitalization(.none)
-                        .keyboardType(.URL)
-                    HStack {
-                        if showKey {
-                            TextField("API Key", text: $apiKey)
-                                .autocapitalization(.none)
-                        } else {
-                            SecureField("API Key", text: $apiKey)
-                                .autocapitalization(.none)
-                        }
-                        Button {
-                            showKey.toggle()
-                        } label: {
-                            Image(systemName: showKey ? "eye.slash" : "eye")
-                                .foregroundColor(.secondary)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                    TextField("模型", text: $model)
-                        .autocapitalization(.none)
-                }
-
-                Section("图片模型") {
-                    Picker("图片模型", selection: $model) {
-                        Text("agnes-image-2.5-flash").tag("agnes-image-2.5-flash")
-                        Text("agnes-image-2.0-flash").tag("agnes-image-2.0-flash")
-                    }
-                    .pickerStyle(.menu)
-                }
-
-                Section {
-                    Text("配置保存在本机 UserDefaults，不会同步到服务器。")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-            }
-            .navigationTitle("设置")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("取消") { dismiss() }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("保存") {
-                        state.config = AgnesConfig(baseURL: baseURL, apiKey: apiKey, model: model)
-                        dismiss()
-                    }
-                }
-            }
-            .onAppear {
-                baseURL = state.config.baseURL
-                apiKey = state.config.apiKey
-                model = state.config.model
-            }
-        }
     }
 }

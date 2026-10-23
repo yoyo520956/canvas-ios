@@ -193,7 +193,8 @@ final class NodeView: UIView {
             generateButton.setTitle("✨ 重新生成", for: .normal)
             generateButton.isEnabled = true
             if node.kind == .image {
-                statusLabel.text = node.resultImageURL != nil ? "已完成" : "输入提示词后点击生成"
+                let hasImage = node.imageName != nil || node.resultImageURL != nil
+                statusLabel.text = hasImage ? "已完成" : "输入提示词后点击生成"
                 statusLabel.textColor = UIColor(white: 0.55, alpha: 1)
                 loadImageIfNeeded()
             } else {

@@ -24,6 +24,8 @@
 	<true/>
 	<key>NSCameraUsageDescription</key>
 	<string>用于拍摄照片插入画布节点</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>用于把生成的图片保存到您的相册</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>用于从相册选择图片插入画布节点</string>
 	<key>UILaunchScreen</key>
