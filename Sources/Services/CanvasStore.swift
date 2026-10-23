@@ -44,19 +44,11 @@ enum CanvasStore {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
         guard let data = try? encoder.encode(nodes) else { return false }
-        // 先写临时文件再替换，避免写入中途被杀导致存档半截损坏
-        let tmp = canvasFile.appendPathExtension("tmp")
         do {
-            try data.write(to: tmp, options: .atomic)
-            if fm.fileExists(atPath: canvasFile.path) {
-                _ = try? fm.replaceItem(at: canvasFile, withItemAt: tmp,
-                                        backupFileName: nil).newItem
-            } else {
-                try fm.moveItem(at: tmp, to: canvasFile)
-            }
+            // .atomic：Foundation 先写临时文件再 rename，中途被杀不会留半截存档
+            try data.write(to: canvasFile, options: .atomic)
             return true
         } catch {
-            try? fm.removeItem(at: tmp)
             return false
         }
     }
