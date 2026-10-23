@@ -25,6 +25,8 @@ struct CanvasNode: Identifiable, Codable, Hashable {
     var prompt: String
     var status: NodeStatus
     var resultImageURL: String?
+    /// 已落盘到 Documents/Canvas/Images 的图片文件名（离线可看，重启不丢）
+    var imageName: String?
     var errorMessage: String?
     var position: CGPoint
     var size: CGSize
@@ -35,6 +37,7 @@ struct CanvasNode: Identifiable, Codable, Hashable {
         self.prompt = prompt
         self.status = kind == .image ? .idle : .done
         self.resultImageURL = nil
+        self.imageName = nil
         self.errorMessage = nil
         self.position = position
         self.size = size
@@ -46,9 +49,10 @@ struct CanvasNode: Identifiable, Codable, Hashable {
         resultImageURL = nil
     }
     
-    mutating func setDone(imageURL: String?) {
+    mutating func setDone(imageURL: String?, imageName: String? = nil) {
         status = .done
         resultImageURL = imageURL
+        if let imageName { self.imageName = imageName }
     }
     
     mutating func setError(_ msg: String) {

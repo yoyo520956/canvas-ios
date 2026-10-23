@@ -215,11 +215,22 @@ final class NodeView: UIView {
 
     // MARK: - 图片加载
     private func loadImageIfNeeded() {
-        guard node.kind == .image,
-              let raw = node.resultImageURL,
+        guard node.kind == .image else { return }
+        // 1) 本地缓存优先（离线可看、重启不丢、不用重复下载）
+        if let name = node.imageName, CanvasStore.readImage(name) != nil {
+            let key = "local:" + name
+            guard loadedImageURL != key else { return }
+            loadedImageURL = key
+            let data = CanvasStore.readImage(name)
+            imageView.image = data.flatMap { UIImage(data: $0) }
+            setNeedsLayout()
+            return
+        }
+        guard let raw = node.resultImageURL,
               loadedImageURL != raw else { return }
         loadedImageURL = raw
         let apiKey = state.config.apiKey
+        let nodeID = node.id
 
         Task { [weak self] in
             guard let self else { return }
@@ -240,6 +251,10 @@ final class NodeView: UIView {
                 }
                 if let (data, _) = try? await URLSession.shared.data(for: request) {
                     image = UIImage(data: data)
+                    // 下载成功 → 回填本地缓存，下次直接读盘
+                    if image != nil {
+                        await MainActor.run { self.state.cacheImage(data, for: nodeID) }
+                    }
                 }
             }
             await MainActor.run {

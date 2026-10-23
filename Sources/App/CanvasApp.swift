@@ -3,6 +3,7 @@ import SwiftUI
 @main
 struct CanvasApp: App {
     @StateObject private var state = CanvasState()
+    @Environment(\.scenePhase) private var scenePhase
     @State private var showPromptSheet = false
     @State private var showSettings = false
     @State private var promptKind: NodeKind = .image
@@ -26,6 +27,10 @@ struct CanvasApp: App {
             }
             .background(Color(uiColor: UIColor(white: 0.055, alpha: 1)))
             .ignoresSafeArea(.keyboard, edges: .bottom)
+            .onChange(of: scenePhase) { phase in
+                // 离开前台立刻落盘，避开 0.6s 防抖窗口被系统杀掉
+                if phase != .active { state.flushNow() }
+            }
             .sheet(isPresented: $showPromptSheet) {
                 PromptInputSheet(kind: promptKind) { kind, prompt in
                     state.addNode(kind: kind, prompt: prompt)

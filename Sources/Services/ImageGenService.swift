@@ -1,6 +1,12 @@
 import Foundation
 import UIKit
 
+/// 生图结果：远程 URL 或已解码的图片二进制（二选一）
+struct GenResult {
+    var url: String?
+    var imageData: Data?
+}
+
 struct APIError: Error, LocalizedError {
     let message: String
     var errorDescription: String? { message }
@@ -10,8 +16,8 @@ final class ImageGenService {
     static let shared = ImageGenService()
     private init() {}
 
-    /// 调用 OpenAI 兼容的 /images/generations 接口，返回图片 URL 或 data-URL
-    func generateImage(config: AgnesConfig, prompt: String) async throws -> String? {
+    /// 调用 OpenAI 兼容的 /images/generations 接口
+    func generateImage(config: AgnesConfig, prompt: String) async throws -> GenResult {
         let endpoint = config.baseURL.hasSuffix("/")
             ? "\(config.baseURL)images/generations"
             : "\(config.baseURL)/images/generations"
@@ -53,10 +59,19 @@ final class ImageGenService {
             throw APIError(message: "API 未返回图片")
         }
         if let imgURL = first.url, !imgURL.isEmpty {
-            return imgURL
+            return GenResult(url: imgURL, imageData: nil)
         }
         if let b64 = first.b64_json, !b64.isEmpty {
-            return "data:image/png;base64,\(b64)"
+            // 优先解码成二进制，交给上层落盘；解不出来再退回 data-URL
+            var payload = b64
+            if let comma = b64.firstIndex(of: ",") {
+                // 兼容 "data:image/png;base64,xxxx" 这种把前缀塞进 b64_json 的实现
+                payload = String(b64[b64.index(after: comma)...])
+            }
+            if let data = Data(base64Encoded: payload) {
+                return GenResult(url: nil, imageData: data)
+            }
+            return GenResult(url: "data:image/png;base64,\(b64)", imageData: nil)
         }
         throw APIError(message: "API 返回内容中没有图片")
     }

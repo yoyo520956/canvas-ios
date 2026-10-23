@@ -16,6 +16,12 @@ jobs:
         with:
           xcode-version: '16.4'
 
+      - name: Read version
+        run: |
+          VER=$(grep -m1 'MARKETING_VERSION:' project.yml | tr -d ' ' | cut -d: -f2)
+          echo "VER=$VER" >> $GITHUB_ENV
+          echo "version = $VER"
+
       - name: Install xcodegen
         run: brew install xcodegen
 
@@ -90,15 +96,16 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v0.1.0
+          tag_name: v${{ env.VER }}
           overwrite_files: true
           prerelease: true
           files: build/ipa/InfiniteCanvas-unsigned.ipa
-          name: InfiniteCanvas v0.1.0
+          name: 无限画布 v${{ env.VER }}
           body: |
-            ## 无限画布 v0.1.0
-            - 无限画布（拖拽/缩放）
-            - AI 图片生成节点（Agnes 2.0 API）
-            - 文字笔记节点
-            - 节点拖拽/调整大小
-            - 设置 API Key
+            ## 无限画布 v${{ env.VER }}
+            - 无限画布：单指拖动、双指捏合缩放、双击建节点
+            - AI 生图节点（OpenAI 兼容 /images/generations，默认 Agnes）
+            - 文字笔记节点，提示词就地编辑
+            - 节点拖动 / 右下角调整尺寸 / 删除
+            - 画布自动存档：节点 + 生成图片全部落盘，重启不丢
+            - 设置页可改 API 地址 / Key / 模型
