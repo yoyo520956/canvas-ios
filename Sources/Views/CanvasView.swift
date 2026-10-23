@@ -39,7 +39,6 @@ final class CanvasScrollView: UIScrollView {
 
     private func setup() {
         backgroundColor = CanvasTheme.canvasBG
-        indicatorsTintColor = UIColor(white: 0.32, alpha: 1)
         minimumZoomScale = 0.15
         maximumZoomScale = 4.0
         bouncesZoom = true

@@ -377,7 +377,7 @@ final class NodeView: UIView {
                    let img = UIImage(data: data) {
                     await MainActor.run {
                         self?.imageView.image = img
-                        self.imageHint.isHidden = true
+                        self?.imageHint.isHidden = true
                     }
                 }
             }
@@ -388,7 +388,13 @@ final class NodeView: UIView {
 // MARK: - 手势委托
 final class NodeGestureDelegate: NSObject, UIGestureRecognizerDelegate {
     weak var owner: NodeView?
-    override func gestureRecognizerShouldBegin(_ g: UIGestureRecognizer) -> Bool {
+
+    /// 类不会合成成员初始化器，必须手写
+    init(owner: NodeView?) {
+        self.owner = owner
+    }
+
+    func gestureRecognizerShouldBegin(_ g: UIGestureRecognizer) -> Bool {
         owner?.shouldBeginDrag(g) ?? true
     }
 }

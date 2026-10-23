@@ -17,34 +17,59 @@ struct ToolbarView: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            toolbarButton(icon: "sparkles.rectangle.stack", title: "AI 生图", tint: .violet, action: onAddImage)
-            toolbarButton(icon: "textformat.size", title: "文字", tint: .green, action: onAddText)
+            toolbarButton(
+                icon: "sparkles.rectangle.stack",
+                title: "AI 生图",
+                color: Color(uiColor: CanvasTheme.violet),
+                action: onAddImage
+            )
+            toolbarButton(
+                icon: "textformat.size",
+                title: "文字",
+                color: Color(uiColor: CanvasTheme.success),
+                action: onAddText
+            )
 
             PhotosPicker(selection: $picked, maxSelectionCount: 6, matching: .images) {
-                toolbarIcon(icon: "photo.on.square", title: "相册", tint: .orange)
+                toolbarIcon(
+                    icon: "photo.on.square",
+                    title: "相册",
+                    color: Color(uiColor: UIColor.systemOrange)
+                )
             }
             .buttonStyle(.plain)
 
             if state.canUndo {
-                toolbarButton(icon: "arrow.uturn.backward", title: "撤销", tint: .yellow) {
-                    state.undo()
-                }
+                toolbarButton(
+                    icon: "arrow.uturn.backward",
+                    title: "撤销",
+                    color: Color(uiColor: UIColor.systemYellow),
+                    action: { state.undo() }
+                )
             }
 
             if let id = state.selectedNodeId, state.imageDataURL(for: id) != nil {
-                toolbarButton(icon: "square.and.arrow.down", title: "存相册", tint: .teal) {
-                    saveToPhotos(nodeId: id)
-                }
+                toolbarButton(
+                    icon: "square.and.arrow.down",
+                    title: "存相册",
+                    color: Color(uiColor: UIColor.systemTeal),
+                    action: { saveToPhotos(nodeId: id) }
+                )
             }
 
             Spacer(minLength: 4)
 
-            toolbarButton(icon: "gearshape", title: "设置", tint: .gray, action: onSettings)
+            toolbarButton(
+                icon: "gearshape",
+                title: "设置",
+                color: Color(uiColor: UIColor.systemGray),
+                action: onSettings
+            )
         }
         .padding(.horizontal, 14)
         .padding(.top, 8)
         .padding(.bottom, 6)
-        .background(
+        .background {
             ZStack {
                 barColor.opacity(0.98)
                 Rectangle()
@@ -52,7 +77,7 @@ struct ToolbarView: View {
                     .frame(height: 1)
                     .frame(maxHeight: .infinity, alignment: .top)
             }
-        )
+        }
         .overlay(alignment: .bottom) {
             if !tip.isEmpty {
                 Text(tip)
@@ -84,7 +109,7 @@ struct ToolbarView: View {
             }
             await MainActor.run {
                 picked = []
-                showToast(ok == 0 ? "没有可读的图片" : "已导入 \(ok) 张图 ✅")
+                showToast(ok == 0 ? "没有可读的图片" : "已导入 \(ok) 张图")
             }
         }
     }
@@ -96,7 +121,7 @@ struct ToolbarView: View {
               let image = UIImage(contentsOfFile: url.path) else { return }
         // 第 3 个参数是 Selector?（完成回调），不需要回调就传 nil
         UIImageWriteToSavedPhotosAlbum(image, nil, nil, nil)
-        showToast("已保存到相册 ✅")
+        showToast("已保存到相册")
     }
 
     private func showToast(_ text: String) {
@@ -108,18 +133,19 @@ struct ToolbarView: View {
 
     // MARK: - 按钮
 
-    private func toolbarButton(icon: String, title: String, tint: Color, action: @escaping () -> Void) -> some View {
+    private func toolbarButton(icon: String, title: String, color: Color,
+                               action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            toolbarIcon(icon: icon, title: title, tint: tint)
+            toolbarIcon(icon: icon, title: title, color: color)
         }
         .buttonStyle(.plain)
     }
 
-    private func toolbarIcon(icon: String, title: String, tint: Color) -> some View {
+    private func toolbarIcon(icon: String, title: String, color: Color) -> some View {
         VStack(spacing: 4) {
             Image(systemName: icon)
                 .font(.system(size: 20, weight: .semibold))
-                .foregroundColor(tint)
+                .foregroundColor(color)
                 .frame(height: 22)
             Text(title)
                 .font(.system(size: 12, weight: .semibold))
@@ -129,10 +155,10 @@ struct ToolbarView: View {
         }
         .frame(minWidth: 62, minHeight: 58)
         .padding(.horizontal, 8)
-        .background(
+        .background {
             RoundedRectangle(cornerRadius: 12)
                 .fill(Color(uiColor: CanvasTheme.chipBG))
-        )
+        }
         .contentShape(RoundedRectangle(cornerRadius: 12))
     }
 }
