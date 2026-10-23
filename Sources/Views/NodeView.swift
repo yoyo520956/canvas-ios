@@ -1,213 +1,201 @@
 import UIKit
 
-class NodeView: UIView {
-    private let node: CanvasNode
+/// 画布节点卡片：支持拖动 / 右下角缩放 / 提示词编辑 / 生图
+final class NodeView: UIView {
+
+    // MARK: - 状态
+    private var node: CanvasNode
     private let state: CanvasState
+    private weak var scrollView: CanvasScrollView?
     private var isSelected = false
+
+    // 拖拽
     private var isDragging = false
     private var dragStartPoint = CGPoint.zero
-    private var dragNodeStartPos = CGPoint.zero
+    private var dragOrigin = CGPoint.zero
+
+    // 缩放
     private var isResizing = false
-    private var resizeCorner: ResizeCorner = .bottomRight
     private var resizeStartSize = CGSize.zero
-    private var resizeStartPos = CGPoint.zero
-    
-    enum ResizeCorner: String { case bottomRight = "bottomRight" }
-    
-    // Subviews
+    private var resizeStartOrigin = CGPoint.zero
+
+    // MARK: - 子视图
     private let cardView = UIView()
     private let titleLabel = UILabel()
     private let promptTextView = UITextView()
     private let imageView = UIImageView()
-    private let statusLabel = UILabel()
     private let generateButton = UIButton(type: .system)
     private let deleteButton = UIButton(type: .system)
+    private let statusLabel = UILabel()
     private let resizeHandle = UIView()
-    private let selectionOverlay = UIView()
-    
-    init(node: CanvasNode, state: CanvasState) {
+    private let selectionBorder = UIView()
+
+    private var loadedImageURL: String?
+    private var isEditingPrompt = false
+
+    // MARK: - 初始化
+    init(node: CanvasNode, state: CanvasState, scrollView: CanvasScrollView?) {
         self.node = node
         self.state = state
+        self.scrollView = scrollView
         super.init(frame: CGRect(origin: node.position, size: node.size))
         setupUI()
-        applyNode()
+        applyContent()
     }
-    
-    required init?(coder: NSCoder) { fatalError() }
-    
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    // MARK: - UI 构建
     private func setupUI() {
-        // Card background
-        cardView.backgroundColor = UIColor(white: 0.12, alpha: 1)
+        backgroundColor = .clear
+
+        cardView.backgroundColor = UIColor(white: 0.115, alpha: 1)
         cardView.layer.cornerRadius = 16
-        cardView.layer.borderWidth = 2
-        cardView.layer.borderColor = UIColor.systemGray5.cgColor
-        cardView.translatesAutoresizingMaskIntoConstraints = false
+        cardView.layer.borderWidth = 1
+        cardView.layer.borderColor = UIColor(white: 0.24, alpha: 1).cgColor
+        cardView.layer.shadowColor = UIColor.black.cgColor
+        cardView.layer.shadowOpacity = 0.45
+        cardView.layer.shadowRadius = 10
+        cardView.layer.shadowOffset = CGSize(width: 0, height: 4)
         addSubview(cardView)
-        
-        NSLayoutConstraint.activate([
-            cardView.topAnchor.constraint(equalTo: topAnchor),
-            cardView.leadingAnchor.constraint(equalTo: leadingAnchor),
-            cardView.trailingAnchor.constraint(equalTo: trailingAnchor),
-            cardView.bottomAnchor.constraint(equalTo: bottomAnchor)
-        ])
-        
-        // Title
-        titleLabel.text = node.kind == .image ? "🖼️ AI 图片" : "📝 文字"
+
         titleLabel.font = .systemFont(ofSize: 13, weight: .semibold)
-        titleLabel.textColor = .secondaryLabel
-        titleLabel.translatesAutoresizingMaskIntoConstraints = false
+        titleLabel.textColor = UIColor(white: 0.72, alpha: 1)
         cardView.addSubview(titleLabel)
-        
-        NSLayoutConstraint.activate([
-            titleLabel.topAnchor.constraint(equalTo: cardView.topAnchor, constant: 12),
-            titleLabel.leadingAnchor.constraint(equalTo: cardView.leadingAnchor, constant: 14)
-        ])
-        
-        // Delete button (top right)
+
         deleteButton.setTitle("✕", for: .normal)
-        deleteButton.titleLabel?.font = .systemFont(ofSize: 14)
-        deleteButton.tintColor = .secondaryLabel
-        deleteButton.translatesAutoresizingMaskIntoConstraints = false
+        deleteButton.titleLabel?.font = .systemFont(ofSize: 15, weight: .medium)
+        deleteButton.tintColor = UIColor(white: 0.65, alpha: 1)
         deleteButton.addTarget(self, action: #selector(deleteTapped), for: .touchUpInside)
         cardView.addSubview(deleteButton)
-        
-        NSLayoutConstraint.activate([
-            deleteButton.topAnchor.constraint(equalTo: cardView.topAnchor, constant: 8),
-            deleteButton.trailingAnchor.constraint(equalTo: cardView.trailingAnchor, constant: -10),
-            deleteButton.widthAnchor.constraint(equalToConstant: 28),
-            deleteButton.heightAnchor.constraint(equalToConstant: 28)
-        ])
-        
-        // Image view
+
         imageView.contentMode = .scaleAspectFill
         imageView.clipsToBounds = true
         imageView.layer.cornerRadius = 10
-        imageView.backgroundColor = UIColor(white: 0.2, alpha: 1)
-        imageView.translatesAutoresizingMaskIntoConstraints = false
+        imageView.backgroundColor = UIColor(white: 0.19, alpha: 1)
         cardView.addSubview(imageView)
-        
-        NSLayoutConstraint.activate([
-            imageView.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 10),
-            imageView.leadingAnchor.constraint(equalTo: cardView.leadingAnchor, constant: 14),
-            imageView.trailingAnchor.constraint(equalTo: cardView.trailingAnchor, constant: -14),
-            imageView.heightAnchor.constraint(equalToConstant: 200),
-            imageView.bottomAnchor.constraint(equalTo: generateButton.topAnchor, constant: -8)
-        ])
-        
-        // Prompt text view
-        promptTextView.text = node.prompt
+
         promptTextView.font = .systemFont(ofSize: 13)
         promptTextView.textColor = .label
-        promptTextView.backgroundColor = UIColor(white: 0.18, alpha: 1)
+        promptTextView.backgroundColor = UIColor(white: 0.17, alpha: 1)
         promptTextView.layer.cornerRadius = 8
-        promptTextView.layer.borderWidth = 1
-        promptTextView.layer.borderColor = UIColor.separator.cgColor
+        promptTextView.textContainerInset = UIEdgeInsets(top: 6, left: 4, bottom: 6, right: 4)
+        promptTextView.delegate = self
         promptTextView.isScrollEnabled = true
-        promptTextView.translatesAutoresizingMaskIntoConstraints = false
         cardView.addSubview(promptTextView)
-        
-        NSLayoutConstraint.activate([
-            promptTextView.topAnchor.constraint(equalTo: imageView.bottomAnchor, constant: 8),
-            promptTextView.leadingAnchor.constraint(equalTo: cardView.leadingAnchor, constant: 14),
-            promptTextView.trailingAnchor.constraint(equalTo: cardView.trailingAnchor, constant: -14),
-            promptTextView.bottomAnchor.constraint(equalTo: generateButton.topAnchor, constant: -6)
-        ])
-        
-        // Generate button
+
         generateButton.setTitle("✨ 生成", for: .normal)
         generateButton.titleLabel?.font = .systemFont(ofSize: 15, weight: .semibold)
         generateButton.layer.cornerRadius = 10
-        generateButton.backgroundColor = UIColor(systemColor: 0x00D4FF)
-        generateButton.setTitleColor(.white, for: .normal)
-        generateButton.translatesAutoresizingMaskIntoConstraints = false
+        generateButton.backgroundColor = UIColor(red: 0, green: 0.83, blue: 1, alpha: 1)
+        generateButton.setTitleColor(.black, for: .normal)
         generateButton.addTarget(self, action: #selector(generateTapped), for: .touchUpInside)
         cardView.addSubview(generateButton)
-        
-        NSLayoutConstraint.activate([
-            generateButton.leadingAnchor.constraint(equalTo: cardView.leadingAnchor, constant: 14),
-            generateButton.trailingAnchor.constraint(equalTo: cardView.trailingAnchor, constant: -14),
-            generateButton.bottomAnchor.constraint(equalTo: cardView.bottomAnchor, constant: -12),
-            generateButton.heightAnchor.constraint(equalToConstant: 40)
-        ])
-        
-        // Status label
+
         statusLabel.font = .systemFont(ofSize: 11)
-        statusLabel.textColor = .secondaryLabel
         statusLabel.textAlignment = .center
-        statusLabel.translatesAutoresizingMaskIntoConstraints = false
+        statusLabel.textColor = UIColor(white: 0.55, alpha: 1)
+        statusLabel.numberOfLines = 1
         cardView.addSubview(statusLabel)
-        
-        NSLayoutConstraint.activate([
-            statusLabel.topAnchor.constraint(equalTo: generateButton.bottomAnchor, constant: 4),
-            statusLabel.leadingAnchor.constraint(equalTo: cardView.leadingAnchor, constant: 14),
-            statusLabel.trailingAnchor.constraint(equalTo: cardView.trailingAnchor, constant: -14)
-        ])
-        
-        // Resize handle (bottom-right corner)
-        resizeHandle.backgroundColor = UIColor.systemBlue.withAlphaComponent(0.3)
-        resizeHandle.layer.cornerRadius = 4
-        resizeHandle.translatesAutoresizingMaskIntoConstraints = false
-        resizeHandle.addGestureRecognizer(UIPanGestureRecognizer(target: self, action: #selector(resizePan(_:))))
+
+        resizeHandle.backgroundColor = UIColor(red: 0, green: 0.83, blue: 1, alpha: 0.85)
+        resizeHandle.layer.cornerRadius = 5
+        resizeHandle.isUserInteractionEnabled = true
+        resizeHandle.addGestureRecognizer(UIPanGestureRecognizer(target: self, action: #selector(handleResize(_:))))
         cardView.addSubview(resizeHandle)
-        
-        NSLayoutConstraint.activate([
-            resizeHandle.trailingAnchor.constraint(equalTo: cardView.trailingAnchor, constant: -6),
-            resizeHandle.bottomAnchor.constraint(equalTo: cardView.bottomAnchor, constant: -6),
-            resizeHandle.widthAnchor.constraint(equalToConstant: 18),
-            resizeHandle.heightAnchor.constraint(equalToConstant: 18)
-        ])
-        
-        // Selection overlay
-        selectionOverlay.layer.cornerRadius = 16
-        selectionOverlay.layer.borderWidth = 2
-        selectionOverlay.layer.borderColor = UIColor.systemBlue.cgColor
-        selectionOverlay.backgroundColor = .clear
-        selectionOverlay.isHidden = true
-        selectionOverlay.translatesAutoresizingMaskIntoConstraints = false
-        insertSubview(selectionOverlay, aboveSubview: cardView)
-        
-        NSLayoutConstraint.activate([
-            selectionOverlay.topAnchor.constraint(equalTo: topAnchor),
-            selectionOverlay.leadingAnchor.constraint(equalTo: leadingAnchor),
-            selectionOverlay.trailingAnchor.constraint(equalTo: trailingAnchor),
-            selectionOverlay.bottomAnchor.constraint(equalTo: bottomAnchor)
-        ])
-        
-        // Pan gesture for dragging
-        let pan = UIPanGestureRecognizer(target: self, action: #selector(handlePan(_:)))
+
+        selectionBorder.layer.cornerRadius = 16
+        selectionBorder.layer.borderWidth = 2.5
+        selectionBorder.layer.borderColor = UIColor(red: 0, green: 0.83, blue: 1, alpha: 1).cgColor
+        selectionBorder.backgroundColor = .clear
+        selectionBorder.isUserInteractionEnabled = false
+        selectionBorder.isHidden = true
+        addSubview(selectionBorder)
+
+        let pan = UIPanGestureRecognizer(target: self, action: #selector(handleDrag(_:)))
+        pan.delegate = self
         addGestureRecognizer(pan)
-        
-        // Tap to select
-        let tap = UITapGestureRecognizer(target: self, action: #selector(tapSelected))
+
+        let tap = UITapGestureRecognizer(target: self, action: #selector(handleTap))
+        tap.delegate = self
         tap.cancelsTouchesInView = false
         addGestureRecognizer(tap)
     }
-    
-    func applyNode() {
-        frame = CGRect(origin: node.position, size: node.size)
-        promptTextView.text = node.prompt
-        updateUI()
+
+    // MARK: - 布局
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        let w = bounds.width
+        let h = bounds.height
+        cardView.frame = bounds
+        selectionBorder.frame = bounds
+
+        titleLabel.frame = CGRect(x: 14, y: 10, width: w - 54, height: 20)
+        deleteButton.frame = CGRect(x: w - 40, y: 7, width: 30, height: 30)
+
+        let isImage = node.kind == .image
+        var cursorY: CGFloat = 36
+
+        if isImage {
+            imageView.isHidden = false
+            let imageH = max(90, h - 210)
+            imageView.frame = CGRect(x: 12, y: cursorY, width: w - 24, height: imageH)
+            cursorY += imageH + 10
+        } else {
+            imageView.isHidden = true
+            imageView.image = nil
+        }
+
+        let btnH: CGFloat = 38
+        let statusH: CGFloat = 16
+        let btnTop = h - btnH - statusH - 18
+        generateButton.frame = CGRect(x: 12, y: btnTop, width: w - 24, height: btnH)
+        statusLabel.frame = CGRect(x: 12, y: btnTop + btnH + 2, width: w - 24, height: statusH)
+
+        let promptH = max(44, btnTop - cursorY - 8)
+        promptTextView.frame = CGRect(x: 12, y: cursorY, width: w - 24, height: promptH)
+
+        resizeHandle.frame = CGRect(x: w - 22, y: h - 22, width: 18, height: 18)
     }
-    
-    func updateUI() {
+
+    // MARK: - 外部同步
+    func sync(node: CanvasNode, isSelected: Bool) {
+        self.node = node
+        self.isSelected = isSelected
+        selectionBorder.isHidden = !isSelected
+        deleteButton.alpha = isSelected ? 1.0 : 0.35
+
+        // 拖拽/缩放过程中不覆写 frame（避免抖动）
+        if !isDragging && !isResizing {
+            let target = CGRect(origin: node.position, size: node.size)
+            if target != frame { frame = target }
+        }
+
+        if !isEditingPrompt && promptTextView.text != node.prompt {
+            promptTextView.text = node.prompt
+        }
+        applyContent()
+    }
+
+    private func applyContent() {
+        titleLabel.text = node.kind == .image ? "🖼️ AI 图片" : "📝 文字"
+
         switch node.status {
         case .generating:
             generateButton.setTitle("⏳ 生成中...", for: .normal)
             generateButton.isEnabled = false
-            statusLabel.text = "AI 正在创作中..."
-            statusLabel.textColor = .systemBlue
-            if node.resultImageURL != nil {
-                loadImage(node.resultImageURL!)
-            }
+            statusLabel.text = "AI 正在创作中…"
+            statusLabel.textColor = UIColor(red: 0, green: 0.83, blue: 1, alpha: 1)
         case .done:
             generateButton.setTitle("✨ 重新生成", for: .normal)
-            generateButton.isEnabled = !node.prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            statusLabel.text = node.resultImageURL != nil ? "已完成" : "输入提示词后点击生成"
-            statusLabel.textColor = .secondaryLabel
-            if let url = node.resultImageURL {
-                loadImage(url)
+            generateButton.isEnabled = true
+            if node.kind == .image {
+                statusLabel.text = node.resultImageURL != nil ? "已完成" : "输入提示词后点击生成"
+                statusLabel.textColor = UIColor(white: 0.55, alpha: 1)
+                loadImageIfNeeded()
             } else {
-                imageView.image = nil
+                statusLabel.text = "文字节点"
+                statusLabel.textColor = UIColor(white: 0.55, alpha: 1)
             }
         case .error:
             generateButton.setTitle("✨ 重试", for: .normal)
@@ -216,98 +204,151 @@ class NodeView: UIView {
             statusLabel.textColor = .systemRed
         case .idle:
             generateButton.setTitle("✨ 生成", for: .normal)
-            generateButton.isEnabled = !node.prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            generateButton.isEnabled = true
             statusLabel.text = "输入提示词后点击生成"
-            statusLabel.textColor = .secondaryLabel
-            imageView.image = nil
+            statusLabel.textColor = UIColor(white: 0.55, alpha: 1)
         }
-        
-        // Update delete button visibility based on selection
-        deleteButton.alpha = isSelected ? 1.0 : 0.4
     }
-    
-    func setSelected(_ selected: Bool) {
-        isSelected = selected
-        selectionOverlay.isHidden = !selected
-        deleteButton.alpha = selected ? 1.0 : 0.4
-        updateUI()
-    }
-    
-    private func loadImage(_ url: String) {
-        DispatchQueue.global(qos: .userInitiated).async {
+
+    // MARK: - 图片加载
+    private func loadImageIfNeeded() {
+        guard node.kind == .image,
+              let raw = node.resultImageURL,
+              loadedImageURL != raw else { return }
+        loadedImageURL = raw
+        let apiKey = state.config.apiKey
+
+        Task { [weak self] in
+            guard let self else { return }
             var image: UIImage?
-            if url.starts(with: "data:") {
-                if let data = Data(base64Encoded: String(url.dropFirst("data:image/png;base64,".count))) {
+            if raw.hasPrefix("data:") {
+                if let comma = raw.firstIndex(of: ",") {
+                    let payload = String(raw[raw.index(after: raw.startIndex)..<comma])
+                    let body = String(raw[raw.index(after: comma)...])
+                    if payload.contains("base64"), let data = Data(base64Encoded: body) {
+                        image = UIImage(data: data)
+                    }
+                }
+            } else if let url = URL(string: raw) {
+                var request = URLRequest(url: url)
+                request.timeoutInterval = 30
+                if !apiKey.isEmpty {
+                    request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+                }
+                if let (data, _) = try? await URLSession.shared.data(for: request) {
                     image = UIImage(data: data)
                 }
-            } else {
-                if let data = try? Data(contentsOf: URL(string: url)!),
-                   let img = UIImage(data: data) {
-                    image = img
-                }
             }
-            DispatchQueue.main.async {
+            await MainActor.run {
                 self.imageView.image = image
-                self.layoutIfNeeded()
+                self.setNeedsLayout()
             }
         }
     }
-    
-    // MARK: - Gesture Handlers
-    
-    @objc private func handlePan(_ pan: UIPanGestureRecognizer) {
-        let location = pan.location(in: superview)
-        
+
+    // MARK: - 手势处理
+    @objc private func handleDrag(_ pan: UIPanGestureRecognizer) {
+        guard let container = scrollView?.contentView else { return }
+        // 编辑提示词时不触发拖拽
+        if isEditingPrompt && pan.state == .began { return }
+
+        let point = pan.location(in: container)
         switch pan.state {
         case .began:
             isDragging = true
-            dragStartPoint = location
-            dragNodeStartPos = node.position
+            dragStartPoint = point
+            dragOrigin = node.position
+            scrollView?.panGestureRecognizer.isEnabled = false
+            state.selectNode(node.id)
         case .changed where isDragging:
-            let delta = CGPoint(x: location.x - dragStartPoint.x, y: location.y - dragStartPoint.y)
-            let newPos = CGPoint(x: dragNodeStartPos.x + delta.x, y: dragNodeStartPos.y + delta.y)
-            state.updateNodePosition(node.id, position: newPos)
+            let dx = point.x - dragStartPoint.x
+            let dy = point.y - dragStartPoint.y
+            let newPos = CGPoint(x: dragOrigin.x + dx, y: dragOrigin.y + dy)
+            node.position = newPos
             frame.origin = newPos
-        case .ended, .cancelled:
+            state.updateNodePosition(node.id, position: newPos)
+        case .ended, .cancelled, .failed:
             isDragging = false
+            scrollView?.panGestureRecognizer.isEnabled = true
         default:
             break
         }
     }
-    
-    @objc private func resizePan(_ pan: UIPanGestureRecognizer) {
-        let location = pan.location(in: superview)
+
+    @objc private func handleResize(_ pan: UIPanGestureRecognizer) {
+        guard let container = scrollView?.contentView else { return }
+        let point = pan.location(in: container)
         switch pan.state {
         case .began:
             isResizing = true
             resizeStartSize = node.size
-            resizeStartPos = node.position
+            resizeStartOrigin = node.position
+            scrollView?.panGestureRecognizer.isEnabled = false
         case .changed where isResizing:
-            let delta = CGPoint(x: location.x - frame.maxX, y: location.y - frame.maxY)
-            let newSize = CGSize(
-                width: max(160, resizeStartSize.width + delta.x),
-                height: max(100, resizeStartSize.height + delta.y)
-            )
-            state.updateNodeSize(node.id, size: newSize)
+            let dx = point.x - (resizeStartOrigin.x + resizeStartSize.width)
+            let dy = point.y - (resizeStartOrigin.y + resizeStartSize.height)
+            let newSize = CGSize(width: max(200, resizeStartSize.width + dx),
+                                height: max(180, resizeStartSize.height + dy))
+            node.size = newSize
             frame.size = newSize
-        case .ended, .cancelled:
+            state.updateNodeSize(node.id, size: newSize)
+        case .ended, .cancelled, .failed:
             isResizing = false
+            scrollView?.panGestureRecognizer.isEnabled = true
         default:
             break
         }
     }
-    
-    @objc private func tapSelected() {
+
+    @objc private func handleTap() {
         state.selectNode(node.id)
-        setSelected(true)
     }
-    
+
     @objc private func generateTapped() {
-        state.generateImage(for: node.id)
+        state.updatePrompt(node.id, promptTextView.text)
+        Task { await state.generateImage(for: node.id) }
     }
-    
+
     @objc private func deleteTapped() {
         state.deleteNode(node.id)
-        removeFromSuperview()
+    }
+
+    // MARK: - UIGestureRecognizerDelegate
+    func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+        if gestureRecognizer is UIPanGestureRecognizer {
+            // 正在编辑提示词 / 点在按钮上 → 不拖拽
+            if isEditingPrompt { return false }
+            if let touched = gestureRecognizer.view?.hitTest(
+                gestureRecognizer.location(in: gestureRecognizer.view),
+                with: nil
+            ), touched is UIControl || touched === promptTextView {
+                return false
+            }
+        }
+        return true
+    }
+
+    func gestureRecognizer(
+        _ gestureRecognizer: UIGestureRecognizer,
+        shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer
+    ) -> Bool {
+        true
+    }
+}
+
+// MARK: - UITextViewDelegate
+extension NodeView: UITextViewDelegate {
+    func textViewDidBeginEditing(_ textView: UITextView) {
+        isEditingPrompt = true
+        state.selectNode(node.id)
+    }
+
+    func textViewDidEndEditing(_ textView: UITextView) {
+        isEditingPrompt = false
+        state.updatePrompt(node.id, textView.text)
+    }
+
+    func textViewDidChange(_ textView: UITextView) {
+        state.updatePrompt(node.id, textView.text)
     }
 }

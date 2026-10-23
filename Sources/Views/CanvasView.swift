@@ -1,89 +1,134 @@
 import SwiftUI
+import UIKit
+
+/// 点阵网格背景（缩放时随内容一起缩放）
+final class DotGridView: UIView {
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        isUserInteractionEnabled = false
+        backgroundColor = .clear
+    }
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func draw(_ rect: CGRect) {
+        guard let ctx = UIGraphicsGetCurrentContext() else { return }
+        ctx.setFillColor(UIColor(white: 0.26, alpha: 1).cgColor)
+        let step: CGFloat = 32
+        var y = rect.minY
+        while y < rect.maxY {
+            var x = rect.minX
+            while x < rect.maxX {
+                ctx.fillEllipse(in: CGRect(x: x - 1, y: y - 1, width: 2, height: 2))
+                x += step
+            }
+            y += step
+        }
+    }
+}
+
+/// 画布宿主：UIScrollView + 固定尺寸内容层（支持双指缩放 / 单指平移）
+final class CanvasScrollView: UIScrollView {
+    let contentView = UIView()
+    let canvasSize = CGSize(width: 8000, height: 8000)
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        setup()
+    }
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    private func setup() {
+        backgroundColor = UIColor(white: 0.055, alpha: 1)
+        minimumZoomScale = 0.15
+        maximumZoomScale = 4.0
+        bouncesZoom = true
+        decelerationRate = .fast
+        showsHorizontalScrollIndicator = true
+        showsVerticalScrollIndicator = true
+        alwaysBounceVertical = true
+        alwaysBounceHorizontal = true
+        contentInsetAdjustmentBehavior = .never
+
+        let grid = DotGridView()
+        grid.frame = CGRect(origin: .zero, size: canvasSize)
+        contentView.addSubview(grid)
+
+        contentView.frame = CGRect(origin: .zero, size: canvasSize)
+        contentView.backgroundColor = .clear
+        addSubview(contentView)
+        contentSize = canvasSize
+    }
+}
 
 struct CanvasView: UIViewRepresentable {
     @ObservedObject var state: CanvasState
-    
-    func makeUIView(context: Context) -> UIScrollView {
-        let scrollView = UIScrollView()
-        scrollView.backgroundColor = UIColor(white: 0.06, alpha: 1)
-        scrollView.minimumZoomScale = 0.1
-        scrollView.maximumZoomScale = 4.0
-        scrollView.delegate = context.coordinator
-        scrollView.showsVerticalScrollIndicator = true
-        scrollView.showsHorizontalScrollIndicator = true
-        scrollView.alwaysBounceVertical = true
-        scrollView.alwaysBounceHorizontal = true
-        
-        // Dot pattern background
-        let dotSize: CGFloat = 20
-        let renderer = UIGraphicsImageRenderer(size: CGSize(width: dotSize, height: dotSize))
-        let dotImg = renderer.image { ctx in
-            UIColor(white: 0.35, alpha: 1).setFill()
-            ctx.fill(CGRect(x: dotSize/2-1, y: dotSize/2-1, width: 2, height: 2))
-        }
-        scrollView.backgroundView = UIImageView(image: dotImg)
-        
-        // Store reference
-        context.coordinator.scrollView = scrollView
-        
-        return scrollView
-    }
-    
-    func updateUIView(_ scrollView: UIScrollView, context: Context) {
+
+    func makeUIView(context: Context) -> CanvasScrollView {
+        let scroll = CanvasScrollView()
+        scroll.delegate = context.coordinator
+        context.coordinator.scrollView = scroll
         context.coordinator.state = state
-        context.coordinator.rebuildNodes(scrollView: scrollView)
+        context.coordinator.sync(scrollView: scroll)
+        return scroll
     }
-    
-    func makeCoordinator() -> Coordinator {
-        Coordinator(state: state)
+
+    func updateUIView(_ scrollView: CanvasScrollView, context: Context) {
+        context.coordinator.state = state
+        context.coordinator.sync(scrollView: scrollView)
     }
-    
-    class Coordinator: NSObject, UIScrollViewDelegate {
+
+    func makeCoordinator() -> Coordinator { Coordinator(state: state) }
+
+    final class Coordinator: NSObject, UIScrollViewDelegate {
         var state: CanvasState
-        var scrollView: UIScrollView?
+        weak var scrollView: CanvasScrollView?
         var nodeViews: [String: NodeView] = [:]
-        
-        init(state: CanvasState) {
-            self.state = state
+
+        init(state: CanvasState) { self.state = state }
+
+        func viewForZooming(in scrollView: UIScrollView) -> UIView? {
+            (scrollView as? CanvasScrollView)?.contentView
         }
-        
-        func rebuildNodes(scrollView: UIScrollView) {
-            // Remove old node views
-            for sub in scrollView.subviews where sub is NodeView {
-                sub.removeFromSuperview()
+
+        /// 增量同步：只增删改有变化的节点视图，避免每次状态刷新重建导致拖拽中断/图片闪烁
+        func sync(scrollView: CanvasScrollView) {
+            let container = scrollView.contentView
+            let liveIds = Set(state.nodes.map(\.id))
+
+            // 1. 删除已消失的节点
+            let deadIds = nodeViews.keys.filter { !liveIds.contains($0) }
+            for id in deadIds {
+                nodeViews[id]?.removeFromSuperview()
+                nodeViews.removeValue(forKey: id)
             }
-            nodeViews.removeAll()
-            
-            // Calculate content size
-            var maxW: CGFloat = 4000
-            var maxH: CGFloat = 4000
+
+            // 2. 更新已有 / 创建新的
             for node in state.nodes {
-                let right = node.position.x + node.size.width
-                let bottom = node.position.y + node.size.height
-                if right > maxW { maxW = right }
-                if bottom > maxH { maxH = bottom }
-            }
-            scrollView.contentSize = CGSize(width: maxW, height: maxH)
-            
-            // Rebuild nodes
-            for node in state.nodes {
-                let nv = NodeView(node: node, state: state)
-                nodeViews[node.id] = nv
-                scrollView.addSubview(nv)
-                
-                if node.id == state.selectedNodeId {
-                    nv.setSelected(true)
+                if let view = nodeViews[node.id] {
+                    view.sync(node: node, isSelected: node.id == state.selectedNodeId)
+                } else {
+                    let view = NodeView(node: node, state: state, scrollView: scrollView)
+                    view.frame = CGRect(origin: node.position, size: node.size)
+                    container.addSubview(view)
+                    nodeViews[node.id] = view
                 }
             }
+
+            // 3. 更新内容尺寸（仅在变化时写入，避免 @Published 触发渲染回环）
+            var maxX = scrollView.canvasSize.width
+            var maxY = scrollView.canvasSize.height
+            for node in state.nodes {
+                maxX = max(maxX, node.position.x + node.size.width + 400)
+                maxY = max(maxY, node.position.y + node.size.height + 400)
+            }
+            let newSize = CGSize(width: maxX, height: maxY)
+            if state.contentSize != newSize {
+                state.contentSize = newSize
+            }
         }
-        
-        func scrollViewDidScroll(_ scrollView: UIScrollView) {
-            // Update node frames based on scroll offset
-            // Nodes are already positioned absolutely in content coordinates
-        }
-        
-        func viewForZooming(in scrollView: UIScrollView) -> UIView? {
-            nil
+
+        func scrollViewDidZoom(_ scrollView: UIScrollView) {
+            (scrollView as? CanvasScrollView)?.contentView.setNeedsDisplay()
         }
     }
 }

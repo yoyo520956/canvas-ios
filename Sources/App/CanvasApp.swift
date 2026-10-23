@@ -6,63 +6,74 @@ struct CanvasApp: App {
     @State private var showPromptSheet = false
     @State private var showSettings = false
     @State private var promptKind: NodeKind = .image
-    
+
     var body: some Scene {
         WindowGroup {
             VStack(spacing: 0) {
-                // Top bar
                 topBar
-                    .padding(.top, 8)
-                
-                // Canvas
+                    .padding(.top, 6)
+                    .padding(.bottom, 4)
+
                 CanvasView(state: state)
-                    .flexibleHeight()
-                
-                // Bottom toolbar
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+
                 ToolbarView(
                     state: state,
-                    onAddImage: { showAddNode(.image) },
-                    onAddText: { showAddNode(.text) },
+                    onAddImage: { presentAdd(.image) },
+                    onAddText: { presentAdd(.text) },
                     onSettings: { showSettings = true }
                 )
-                .padding(.bottom, 8)
             }
-            .background(Color(uiColor: UIColor(white: 0.06, alpha: 1)))
+            .background(Color(uiColor: UIColor(white: 0.055, alpha: 1)))
+            .ignoresSafeArea(.keyboard, edges: .bottom)
             .sheet(isPresented: $showPromptSheet) {
-                PromptInputSheet(
-                    kind: promptKind,
-                    onSubmit: { kind, prompt in
-                        state.addNode(kind: kind, prompt: prompt)
-                    }
-                )
+                PromptInputSheet(kind: promptKind) { kind, prompt in
+                    state.addNode(kind: kind, prompt: prompt)
+                }
             }
             .sheet(isPresented: $showSettings) {
                 SettingsSheet(state: state)
             }
         }
     }
-    
+
     private var topBar: some View {
         HStack {
-            Text("无限画布")
-                .font(.headline)
-                .foregroundColor(.primary)
-            
+            HStack(spacing: 6) {
+                Image(systemName: "square.on.square.dashed")
+                    .foregroundColor(Color(uiColor: UIColor(red: 0, green: 0.83, blue: 1, alpha: 1)))
+                Text("无限画布")
+                    .font(.headline)
+            }
+
             Spacer()
-            
-            // Node count
-            Text("\(state.nodes.count) 个节点")
-                .font(.caption)
-                .foregroundColor(.secondary)
-                .padding(.horizontal, 10)
+
+            if state.generatingIds.isEmpty == false {
+                HStack(spacing: 5) {
+                    ProgressView()
+                        .controlSize(.mini)
+                    Text("\(state.generatingIds.count) 个生成中")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                .padding(.horizontal, 9)
                 .padding(.vertical, 4)
                 .background(Color(uiColor: .systemGray5))
-                .cornerRadius(8)
+                .cornerRadius(9)
+            }
+
+            Text("\(state.nodes.count) 节点")
+                .font(.caption)
+                .foregroundColor(.secondary)
+                .padding(.horizontal, 9)
+                .padding(.vertical, 4)
+                .background(Color(uiColor: .systemGray5))
+                .cornerRadius(9)
         }
         .padding(.horizontal, 16)
     }
-    
-    private func showAddNode(_ kind: NodeKind) {
+
+    private func presentAdd(_ kind: NodeKind) {
         promptKind = kind
         showPromptSheet = true
     }
