@@ -28,7 +28,6 @@ struct SettingsSheet: View {
                         .autocapitalization(.none)
                         .disableAutocorrection(true)
                         .keyboardType(.URL)
-                        .textContentContentType(.oneTimeCode)
 
                     HStack {
                         Group {
@@ -40,7 +39,6 @@ struct SettingsSheet: View {
                         }
                         .autocapitalization(.none)
                         .disableAutocorrection(true)
-                        .textContentContentType(.oneTimeCode)
 
                         Button {
                             showKey.toggle()
@@ -89,7 +87,7 @@ struct SettingsSheet: View {
             }
             .navigationTitle("设置")
             .navigationBarTitleDisplayMode(.inline)
-            .confirmationDialog("确定清空全部节点和图片缓存？", isPresented: $confirmClear, titleVisibility: .visible) {
+            .alert("确定清空全部节点和图片缓存？", isPresented: $confirmClear) {
                 Button("清空", role: .destructive) {
                     state.clearAll()
                     dismiss()

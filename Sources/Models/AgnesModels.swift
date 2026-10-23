@@ -9,6 +9,14 @@ struct AgnesConfig: Codable {
 
     static let sizes = ["1024x1024", "1024x1536", "1536x1024", "512x512"]
 
+    /// 写了自定义 init(from:) 之后 Swift 不再合成成员初始化器，这里手动补一个
+    init(baseURL: String, apiKey: String, model: String, size: String = "1024x1024") {
+        self.baseURL = baseURL
+        self.apiKey = apiKey
+        self.model = model
+        self.size = size
+    }
+
     static let `default` = AgnesConfig(
         baseURL: "https://api.agnes-ai.cn/v1",
         apiKey: "c2stWGFHalhKUzc3FnpRVmYwYWNkYnNmVXdmMU9SNHd0VXhUU050Q0ZnNGNWMUhlUzgy",
